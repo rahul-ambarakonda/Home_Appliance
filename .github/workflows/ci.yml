@@ -1,0 +1,111 @@
+```yaml
+# Project: Home_Appliance, a web service exposing a RESTful API designed to manage home appliance data using Python with Flask and SQLite.
+# Implemented in this sprint: HA-8, HA-6, HA-9, HA-11, HA-12, HA-13, HA-15, HA-16, HA-17, HA-18, HA-19, HA-20, HA-21
+
+name: CI/CD
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests (best-effort)
+        # Adapt for Python stack from CONTEXT.md.
+        # Uses `|| echo ...` and `continue-on-error` for best-effort as per Rule 9.
+        run: python -m pytest || echo "pytest command failed or not found (continuing due to best-effort CI)."
+        continue-on-error: true
+
+      - name: Run lint (best-effort)
+        # Adapt for Python stack from CONTEXT.md.
+        # Uses `|| echo ...` and `continue-on-error` for best-effort as per Rule 9.
+        run: python -m flake8 . || echo "flake8 command failed or not found (continuing due to best-effort CI)."
+        continue-on-error: true
+
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.ci.result == 'success'
+    env:
+      EC2_HOST: ${{ secrets.EC2_HOST }}
+    steps:
+      - name: Skip deploy if EC2 secrets are not configured
+        if: env.EC2_HOST == ''
+        run: |
+          echo "EC2_HOST secret is not set. Skipping deploy."
+          exit 0 # exit with success to mark job as skipped cleanly
+
+      - name: Checkout code
+        if: env.EC2_HOST != ''
+        uses: actions/checkout@v4
+
+      - name: Deploy to EC2
+        if: env.EC2_HOST != ''
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # a. Source nvm so node/npm/pnpm are available in the non-interactive SSH shell
+            export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
+            # b. cd to deploy path
+            cd ${{ secrets.EC2_DEPLOY_PATH }}
+
+            # c. Fetch and hard-reset to remote so local changes never block the deploy
+            git fetch origin main
+            git reset --hard origin/main
+
+            # d. Sync new env vars from .env.sample into .env (append missing keys only, never overwrite)
+            if [ -f .env.sample ]; then
+              touch .env
+              while IFS= read -r line; do
+                # skip blank lines and comments
+                [[ -z "$line" || "$line" == \#* ]] && continue
+                key=$(echo "$line" | cut -d= -f1)
+                # only append if key not already present in .env
+                if ! grep -q "^${key}=" .env 2>/dev/null; then
+                  echo "$line" >> .env
+                  echo "⚠️  New env var added (set real value): ${key}"
+                fi
+              done < .env.sample
+            fi
+
+            # e. Install dependencies WITHOUT assuming a lockfile exists (adapt for Python)
+            pip install -r requirements.txt
+
+            # f. Run build step if the project has one, tolerating its absence (adapt for Python)
+            # For a Python Flask API, there is typically no explicit "build" step.
+            echo "No dedicated build step for Python Flask project. Skipping."
+
+            # g. Restart the app with PM2 using zero-downtime reload
+            # Assuming 'gunicorn app:app' as the entrypoint for a Flask application in the 'app' package.
+            pm2 reload app --update-env || pm2 start gunicorn app:app --name app
+
+            # h. pm2 save
+            pm2 save
+```
