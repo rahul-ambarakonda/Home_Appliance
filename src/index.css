@@ -67,3 +67,26 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+/* ProductList responsive grid styles */
+.product-list-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); /* Default 1 column on small screens, adjusts */
+  gap: 20px; /* Spacing between cards */
+  padding: 20px; /* Padding around the grid */
+  justify-content: center; /* Center items in the grid */
+}
+
+/* Medium screens */
+@media (min-width: 768px) {
+  .product-list-container {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); /* 2-3 columns */
+  }
+}
+
+/* Large screens */
+@media (min-width: 1024px) {
+  .product-list-container {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); /* 4+ columns */
+  }
+}
