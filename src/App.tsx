@@ -1,10 +1,11 @@
 import './App.css'
 import ProductList from './components/ProductList';
+import Header from './components/Header';
 
 function App() {
   return (
     <>
-      <h1>Home Appliance Products</h1>
+      <Header />
       <ProductList />
     </>
   )
